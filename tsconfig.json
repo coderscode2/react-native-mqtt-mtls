@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "commonjs",
+    "outDir": "./lib",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "typeRoots": ["./src", "./node_modules/@types"]
+  },
+  "include": ["src/**/*", "src/react-native.d.ts"],
+  "exclude": ["node_modules"]
+}
