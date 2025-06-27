@@ -1,0 +1,23 @@
+{
+  "name": "react-native-mqtt-mtls",
+  "version": "0.0.1",
+  "description": "Handles MQTT connection over native layer providing mTLS support",
+  "main": "index.js",
+  "scripts": {
+    "test": "yarn test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coderscode2/react-native-mqtt-mtls.git"
+  },
+  "keywords": [
+    "react-native",
+    "mqtt"
+  ],
+  "author": "Ved Yedla",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/coderscode2/react-native-mqtt-mtls/issues"
+  },
+  "homepage": "https://github.com/coderscode2/react-native-mqtt-mtls#readme"
+}
