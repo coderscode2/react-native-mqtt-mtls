@@ -28,5 +28,5 @@ export interface MqttContextType {
   disconnect: () => Promise<void>;
   subscribe: (topic: string, qos?: number) => Promise<void>;
   unsubscribe: (topic: string) => Promise<void>;
-  publish: (topic: string, message: string, qos?: number) => Promise<void>;
+  publish: (topic: string, message: string, qos?: number, retained?: boolean) => Promise<void>;
 }
