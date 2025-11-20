@@ -37,13 +37,6 @@ export const MqttProvider: React.FC<MqttProviderProps> = ({ children }) => {
     // Clean up any existing listeners first
     cleanupEventListeners();
 
-    // Register events on native side (this just marks them as active)
-    MqttModule.on('message', () => {});
-    MqttModule.on('connect', () => {});
-    MqttModule.on('connectionLost', () => {});
-    MqttModule.on('reconnect', () => {});
-    MqttModule.on('error', () => {});
-
     // Subscribe to native events
     const messageSubscription = eventEmitter.addListener(
       'MqttMessage',
@@ -151,7 +144,7 @@ export const MqttProvider: React.FC<MqttProviderProps> = ({ children }) => {
       }
 
       await new Promise<void>((resolve, reject) => {
-        MqttModule.subscribeToTopic(
+        MqttModule.subscribe(
           topic,
           qos,
           () => resolve(),
@@ -169,7 +162,7 @@ export const MqttProvider: React.FC<MqttProviderProps> = ({ children }) => {
       }
 
       await new Promise<void>((resolve, reject) => {
-        MqttModule.unsubscribeFromTopic(
+        MqttModule.unsubscribe(
           topic,
           () => resolve(),
           (err: string) => reject(new Error(err))
@@ -180,16 +173,17 @@ export const MqttProvider: React.FC<MqttProviderProps> = ({ children }) => {
   );
 
   const publish = useCallback(
-    async (topic: string, message: string, qos: number = 1) => {
+    async (topic: string, message: string, qos: number = 1, retained: boolean = false) => {
       if (!isConnected) {
         throw new Error('Not connected to MQTT broker');
       }
 
       await new Promise<void>((resolve, reject) => {
-        MqttModule.sendMessageToBroker(
+        MqttModule.publish(
           topic,
           message,
           qos,
+          retained,
           () => resolve(),
           (err: string) => reject(new Error(err))
         );
