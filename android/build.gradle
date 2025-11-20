@@ -10,7 +10,7 @@ apply plugin: "kotlin-android"
 
 android {
     compileSdkVersion rootProject.ext.compileSdkVersion
-    namespace 'com.mqttmtls'
+    namespace 'com.reactnativemqttmtls'
 
     defaultConfig {
         minSdkVersion rootProject.ext.minSdkVersion
