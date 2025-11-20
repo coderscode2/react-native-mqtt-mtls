@@ -1,6 +1,6 @@
 {
   "name": "react-native-mqtt-mtls",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "React Native MQTT client with mTLS support using MqttProvider context",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
