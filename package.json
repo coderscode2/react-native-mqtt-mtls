@@ -1,30 +1,19 @@
 {
   "name": "react-native-mqtt-mtls",
-  "version": "1.0.2",
+  "version": "1.0.1",
   "description": "React Native MQTT client with mTLS (mutual TLS) support and Context Provider pattern for secure, persistent connections",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
   "types": "lib/typescript/index.d.ts",
   "react-native": "src/index.tsx",
   "source": "src/index.tsx",
-  "files": [
-    "src",
-    "lib",
-    "android",
-    "react-native.config.js",
-    "!android/build",
-    "!android/.gradle",
-    "!**/__tests__",
-    "!**/__fixtures__",
-    "!**/__mocks__",
-    "!**/.*"
-  ],
   "scripts": {
     "typescript": "tsc --noEmit",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "test": "jest",
+    "build": "bob build",
     "prepare": "bob build",
-    "release": "release-it",
+    "postinstall": "echo '\n✅ react-native-mqtt-mtls installed successfully!\nℹ️  Don't forget to add permissions to AndroidManifest.xml\nℹ️  See: https://github.com/coderscode2/react-native-mqtt-mtls#installation\n'",
     "example": "yarn --cwd example",
     "bootstrap": "yarn example && yarn && yarn example pods"
   },
@@ -47,7 +36,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/coderscode2/react-native-mqtt-mtls.git"
+    "url": "git+https://github.com/coderscode2/react-native-mqtt-mtls.git",
+    "directory": "/"
+  },
+  "installation": {
+    "npm": "npm install coderscode2/react-native-mqtt-mtls#wip",
+    "yarn": "yarn add coderscode2/react-native-mqtt-mtls#wip",
+    "specificCommit": "yarn add coderscode2/react-native-mqtt-mtls#commit-hash"
   },
   "author": "Your Name <your.email@example.com>",
   "license": "MIT",
@@ -55,9 +50,7 @@
     "url": "https://github.com/coderscode2/react-native-mqtt-mtls/issues"
   },
   "homepage": "https://github.com/coderscode2/react-native-mqtt-mtls#readme",
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
-  },
+  "private": false,
   "peerDependencies": {
     "react": "*",
     "react-native": "*"
