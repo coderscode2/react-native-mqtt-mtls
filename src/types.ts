@@ -6,7 +6,7 @@ export interface MqttMessage {
 
 export interface MqttCertificates {
   clientCert: string;
-  privateKey: string;
+  privateKeyAlias: string;
   rootCa: string;
 }
 
