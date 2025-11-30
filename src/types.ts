@@ -1,6 +1,12 @@
+export interface MqttMessage {
+  topic: string;
+  message: string;
+  qos: number;
+}
+
 export interface MqttCertificates {
   clientCert: string;
-  privateKeyAlias: string;
+  privateKey: string;
   rootCa: string;
 }
 
@@ -13,12 +19,6 @@ export interface MqttConfig {
   onConnectionLost?: (error: string) => void;
   onReconnect?: () => void;
   onError?: (error: string) => void;
-}
-
-export interface MqttMessage {
-  topic: string;
-  message: string;
-  qos: number;
 }
 
 export interface MqttContextType {
