@@ -1,7 +1,4 @@
-export { MqttProvider, MqttContext, useMqtt } from './MqttProvider';
-export type {
-  MqttConfig,
-  MqttCertificates,
-  MqttMessage,
-  MqttContextType,
-} from './types';
+export { MqttProvider } from './MqttProvider';
+export { useMqtt } from './useMqtt';
+export { default as MqttModule } from './MqttModule';
+export type { MqttMessage, MqttCertificates, MqttConfig, MqttContextType } from './types';
