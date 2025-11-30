@@ -1,4 +1,3 @@
-
 package com.reactnativemqttmtls;
 
 import android.content.Context;
@@ -137,7 +136,8 @@ public class MqttModule extends ReactContextBaseJavaModule {
             String clientCertPem = certificates.hasKey("clientCert")
                     ? sanitizePEM(certificates.getString("clientCert"), "Client Cert")
                     : null;
-            String privateKeyAlias = certificates.hasKey("privateKeyAlias") ? certificates.getString("privateKeyAlias")
+            String privateKeyAlias = certificates.hasKey("privateKeyAlias") 
+                    ? certificates.getString("privateKeyAlias")
                     : null;
             String rootCaPem = certificates.hasKey("rootCa") ? sanitizePEM(certificates.getString("rootCa"), "Root CA")
                     : null;
