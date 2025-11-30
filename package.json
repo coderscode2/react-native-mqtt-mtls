@@ -2,7 +2,7 @@
   "name": "react-native-mqtt-mtls",
   "version": "1.0.0",
   "description": "A React Native MQTT client with mTLS (mutual TLS) support",
-  "main": "index.js",
+  "main": "index.ts",
   "types": "index.d.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -38,13 +38,11 @@
   },
   "files": [
     "android/",
-    "index.js",
+    "src/",
+    "index.ts",
     "index.d.ts",
-    "MqttContext.js",
-    "MqttProvider.js",
-    "useMqtt.js",
     "README.md",
     "LICENSE"
   ],
-  "react-native": "index.js"
+  "react-native": "index.ts"
 }
