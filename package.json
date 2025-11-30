@@ -1,6 +1,6 @@
 {
   "name": "react-native-mqtt-mtls",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "React Native MQTT client with mTLS (mutual TLS) support and Context Provider pattern for secure, persistent connections",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
@@ -13,7 +13,7 @@
     "test": "jest",
     "build": "bob build",
     "prepare": "bob build",
-    "postinstall": "echo '\n✅ react-native-mqtt-mtls installed successfully!\nℹ️  Don't forget to add permissions to AndroidManifest.xml\nℹ️  See: https://github.com/coderscode2/react-native-mqtt-mtls#installation\n'",
+    "postinstall": "node scripts/postinstall.js",
     "example": "yarn --cwd example",
     "bootstrap": "yarn example && yarn && yarn example pods"
   },
