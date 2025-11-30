@@ -2,8 +2,13 @@ module.exports = {
   dependency: {
     platforms: {
       android: {
-        packageInstance: 'new com.mqttmtls.MqttPackage()'
-      }
-    }
-  }
+        packageImportPath: 'import com.reactnativemqttmtls.MqttMtlsPackage;',
+        packageInstance: 'new MqttMtlsPackage()',
+      },
+      ios: {
+        // iOS support can be added here in the future
+        // podspecPath: 'react-native-mqtt-mtls.podspec',
+      },
+    },
+  },
 };
