@@ -28,29 +28,40 @@ import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.PrivateKey;
 import java.security.Security;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.SNIHostName;
 
 public class MqttModule extends ReactContextBaseJavaModule {
     private static final String TAG = "MqttModule";
     private final ReactApplicationContext reactContext;
     private MqttClient client;
+
+    // Configuration constants - MODIFY THESE FOR YOUR ENVIRONMENT
+    private static final String UUID_HOSTNAME = "5dab25dd-7d0a-4a03-94c3-39f935c0a48a";
+    private static final String BROKER_IP = "10.10.10.10";
+    private static final int BROKER_PORT = 8883;
 
     public MqttModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -74,6 +85,85 @@ public class MqttModule extends ReactContextBaseJavaModule {
     @Override
     public String getName() {
         return "MqttModule";
+    }
+
+    /**
+     * Custom SSLSocketFactory that connects to a specific IP while preserving SNI hostname
+     * This solves the DNS resolution issue when using UUIDs as hostnames
+     */
+    private static class SniIpSocketFactory extends SSLSocketFactory {
+        private final SSLSocketFactory delegate;
+        private final String sniHost;       // UUID hostname for SNI
+        private final String realIp;        // Actual broker IP address
+
+        public SniIpSocketFactory(SSLSocketFactory delegate, String sniHost, String realIp) {
+            this.delegate = delegate;
+            this.sniHost = sniHost;
+            this.realIp = realIp;
+        }
+
+        @Override
+        public Socket createSocket() throws IOException {
+            return delegate.createSocket();
+        }
+
+        @Override
+        public Socket createSocket(Socket s, String host, int port, boolean autoClose) throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(s, sniHost, port, autoClose);
+            applySniAndSettings(socket);
+            return socket;
+        }
+
+        @Override
+        public Socket createSocket(String host, int port) throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(realIp, port);
+            applySniAndSettings(socket);
+            return socket;
+        }
+
+        @Override
+        public Socket createSocket(String host, int port, InetAddress localHost, int localPort) throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(realIp, port, localHost, localPort);
+            applySniAndSettings(socket);
+            return socket;
+        }
+
+        @Override
+        public Socket createSocket(InetAddress host, int port) throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(InetAddress.getByName(realIp), port);
+            applySniAndSettings(socket);
+            return socket;
+        }
+
+        @Override
+        public Socket createSocket(InetAddress address, int port, InetAddress localAddress, int localPort) throws IOException {
+            SSLSocket socket = (SSLSocket) delegate.createSocket(InetAddress.getByName(realIp), port, localAddress, localPort);
+            applySniAndSettings(socket);
+            return socket;
+        }
+
+        private void applySniAndSettings(SSLSocket socket) throws IOException {
+            // Set SNI hostname explicitly
+            SSLParameters params = socket.getSSLParameters();
+            params.setServerNames(Collections.singletonList(new SNIHostName(sniHost)));
+            socket.setSSLParameters(params);
+
+            // Force modern TLS versions
+            socket.setEnabledProtocols(new String[]{"TLSv1.2", "TLSv1.3"});
+            
+            Log.d(TAG, "  ✓ SNI configured: " + sniHost);
+            Log.d(TAG, "  ✓ Connecting to IP: " + realIp);
+        }
+
+        @Override 
+        public String[] getDefaultCipherSuites() { 
+            return delegate.getDefaultCipherSuites(); 
+        }
+        
+        @Override 
+        public String[] getSupportedCipherSuites() { 
+            return delegate.getSupportedCipherSuites(); 
+        }
     }
 
     private String sanitizePEM(String pem, String type) {
@@ -201,62 +291,21 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             SSLContext sslContext = createSSLContextFromKeystore(privateKeyAlias, clientCertPem, rootCaPem);
 
-            // ⚠️ TESTING ONLY - Temporarily disable hostname verification
-            Log.w(TAG, "");
-            Log.w(TAG, "╔════════════════════════════════════════════════════════════════");
-            Log.w(TAG, "║ ⚠️⚠️⚠️ WARNING: HOSTNAME VERIFICATION DISABLED FOR TESTING ⚠️⚠️⚠️");
-            Log.w(TAG, "║ THIS MUST BE REMOVED BEFORE PRODUCTION!");
-            Log.w(TAG, "╚════════════════════════════════════════════════════════════════");
+            // Create custom socket factory that handles UUID hostname + IP connection
+            Log.d(TAG, "");
+            Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
+            Log.d(TAG, "│ Step 3.5: Configuring SNI Socket Factory");
+            Log.d(TAG, "└─────────────────────────────────────────────────────────────");
+            Log.d(TAG, "  SNI Hostname: " + UUID_HOSTNAME);
+            Log.d(TAG, "  Real IP: " + BROKER_IP);
             
-            options.setSSLHostnameVerifier(new HostnameVerifier() {
-                @Override
-                public boolean verify(String hostname, SSLSession session) {
-                    Log.w(TAG, "");
-                    Log.w(TAG, "╔════════════════════════════════════════════════════════════════");
-                    Log.w(TAG, "║ HOSTNAME VERIFICATION CALLBACK");
-                    Log.w(TAG, "╠════════════════════════════════════════════════════════════════");
-                    Log.w(TAG, "║ Requested hostname: " + hostname);
-                    Log.w(TAG, "║ Peer host from session: " + session.getPeerHost());
-                    Log.w(TAG, "║ Peer port: " + session.getPeerPort());
-                    Log.w(TAG, "║ Protocol: " + session.getProtocol());
-                    Log.w(TAG, "║ Cipher suite: " + session.getCipherSuite());
-                    Log.w(TAG, "║ Session valid: " + session.isValid());
-                    
-                    try {
-                        java.security.cert.Certificate[] peerCerts = session.getPeerCertificates();
-                        Log.w(TAG, "║ Peer certificates count: " + peerCerts.length);
-                        if (peerCerts.length > 0 && peerCerts[0] instanceof X509Certificate) {
-                            X509Certificate serverCert = (X509Certificate) peerCerts[0];
-                            Log.w(TAG, "║ Server cert subject: " + serverCert.getSubjectDN());
-                            Log.w(TAG, "║ Server cert issuer: " + serverCert.getIssuerDN());
-                            
-                            // Get Subject Alternative Names
-                            try {
-                                Collection<List<?>> sans = serverCert.getSubjectAlternativeNames();
-                                if (sans != null) {
-                                    Log.w(TAG, "║ Server cert SANs:");
-                                    for (List<?> san : sans) {
-                                        Log.w(TAG, "║   - Type " + san.get(0) + ": " + san.get(1));
-                                    }
-                                } else {
-                                    Log.w(TAG, "║ Server cert has no SANs");
-                                }
-                            } catch (Exception e) {
-                                Log.w(TAG, "║ Could not read SANs: " + e.getMessage());
-                            }
-                        }
-                    } catch (Exception e) {
-                        Log.w(TAG, "║ Could not get peer certificates: " + e.getMessage());
-                    }
-                    
-                    Log.w(TAG, "║ Decision: ACCEPTING (verification bypassed)");
-                    Log.w(TAG, "╚════════════════════════════════════════════════════════════════");
-                    return true; // Accept all hostnames
-                }
-            });
-
-            options.setSocketFactory(sslContext.getSocketFactory());
-            Log.i(TAG, "✓ SSL socket factory configured");
+            SSLSocketFactory baseFactory = sslContext.getSocketFactory();
+            SSLSocketFactory customFactory = new SniIpSocketFactory(baseFactory, UUID_HOSTNAME, BROKER_IP);
+            
+            options.setSocketFactory(customFactory);
+            Log.i(TAG, "✓ Custom SNI socket factory configured");
+            Log.i(TAG, "  ✓ DNS resolution bypassed - connecting directly to IP");
+            Log.i(TAG, "  ✓ SNI hostname preserved for certificate validation");
 
             // Set up callback
             Log.d(TAG, "");
