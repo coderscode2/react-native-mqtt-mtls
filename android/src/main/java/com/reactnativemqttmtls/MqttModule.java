@@ -1,4 +1,3 @@
-
 package com.reactnativemqttmtls;
 
 import android.content.Context;
@@ -36,10 +35,17 @@ import java.security.PrivateKey;
 import java.security.Security;
 import java.util.Collection;
 import java.util.ArrayList;
+import java.util.List;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.KeyManager;
 import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 public class MqttModule extends ReactContextBaseJavaModule {
     private static final String TAG = "MqttModule";
@@ -194,6 +200,61 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
             SSLContext sslContext = createSSLContextFromKeystore(privateKeyAlias, clientCertPem, rootCaPem);
+
+            // ⚠️ TESTING ONLY - Temporarily disable hostname verification
+            Log.w(TAG, "");
+            Log.w(TAG, "╔════════════════════════════════════════════════════════════════");
+            Log.w(TAG, "║ ⚠️⚠️⚠️ WARNING: HOSTNAME VERIFICATION DISABLED FOR TESTING ⚠️⚠️⚠️");
+            Log.w(TAG, "║ THIS MUST BE REMOVED BEFORE PRODUCTION!");
+            Log.w(TAG, "╚════════════════════════════════════════════════════════════════");
+            
+            options.setSSLHostnameVerifier(new HostnameVerifier() {
+                @Override
+                public boolean verify(String hostname, SSLSession session) {
+                    Log.w(TAG, "");
+                    Log.w(TAG, "╔════════════════════════════════════════════════════════════════");
+                    Log.w(TAG, "║ HOSTNAME VERIFICATION CALLBACK");
+                    Log.w(TAG, "╠════════════════════════════════════════════════════════════════");
+                    Log.w(TAG, "║ Requested hostname: " + hostname);
+                    Log.w(TAG, "║ Peer host from session: " + session.getPeerHost());
+                    Log.w(TAG, "║ Peer port: " + session.getPeerPort());
+                    Log.w(TAG, "║ Protocol: " + session.getProtocol());
+                    Log.w(TAG, "║ Cipher suite: " + session.getCipherSuite());
+                    Log.w(TAG, "║ Session valid: " + session.isValid());
+                    
+                    try {
+                        java.security.cert.Certificate[] peerCerts = session.getPeerCertificates();
+                        Log.w(TAG, "║ Peer certificates count: " + peerCerts.length);
+                        if (peerCerts.length > 0 && peerCerts[0] instanceof X509Certificate) {
+                            X509Certificate serverCert = (X509Certificate) peerCerts[0];
+                            Log.w(TAG, "║ Server cert subject: " + serverCert.getSubjectDN());
+                            Log.w(TAG, "║ Server cert issuer: " + serverCert.getIssuerDN());
+                            
+                            // Get Subject Alternative Names
+                            try {
+                                Collection<List<?>> sans = serverCert.getSubjectAlternativeNames();
+                                if (sans != null) {
+                                    Log.w(TAG, "║ Server cert SANs:");
+                                    for (List<?> san : sans) {
+                                        Log.w(TAG, "║   - Type " + san.get(0) + ": " + san.get(1));
+                                    }
+                                } else {
+                                    Log.w(TAG, "║ Server cert has no SANs");
+                                }
+                            } catch (Exception e) {
+                                Log.w(TAG, "║ Could not read SANs: " + e.getMessage());
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "║ Could not get peer certificates: " + e.getMessage());
+                    }
+                    
+                    Log.w(TAG, "║ Decision: ACCEPTING (verification bypassed)");
+                    Log.w(TAG, "╚════════════════════════════════════════════════════════════════");
+                    return true; // Accept all hostnames
+                }
+            });
+
             options.setSocketFactory(sslContext.getSocketFactory());
             Log.i(TAG, "✓ SSL socket factory configured");
 
@@ -271,6 +332,8 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "╔════════════════════════════════════════════════════════════════");
             Log.d(TAG, "║ Step 5: Connecting to MQTT Broker");
             Log.d(TAG, "║ This may take a few seconds...");
+            Log.d(TAG, "║ Broker: " + broker);
+            Log.d(TAG, "║ Client ID: " + clientId);
             Log.d(TAG, "╚════════════════════════════════════════════════════════════════");
 
             client.connect(options);
@@ -298,11 +361,17 @@ public class MqttModule extends ReactContextBaseJavaModule {
             if (e.getCause() != null) {
                 Log.e(TAG, "╠════════════════════════════════════════════════════════════════");
                 Log.e(TAG, "║ Root Cause: " + e.getCause().getMessage());
+                Log.e(TAG, "║ Root Cause Type: " + e.getCause().getClass().getName());
             }
             Log.e(TAG, "╚════════════════════════════════════════════════════════════════");
 
             Log.e(TAG, "=== Full Stack Trace ===");
             e.printStackTrace();
+
+            if (e.getCause() != null) {
+                Log.e(TAG, "=== Root Cause Stack Trace ===");
+                e.getCause().printStackTrace();
+            }
 
             errorCallback.invoke("Connection failed: " + e.getMessage());
         }
@@ -416,7 +485,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
      * Creates an SSLContext using a private key from Android Keystore
      * 
      * @param privateKeyAlias The alias of the private key in Android Keystore
-     *                        (e.g., "ECC_CSR_PRIVATE_KEY")
+     *                        (e.g., "CSR_ECC_PRIVATE_KEY_secp384r1")
      * @param clientCertPem   The client certificate in PEM format
      * @param rootCaPem       The root CA certificate(s) in PEM format
      * @return Configured SSLContext
@@ -438,14 +507,30 @@ public class MqttModule extends ReactContextBaseJavaModule {
             KeyStore androidKeyStore = KeyStore.getInstance("AndroidKeyStore");
             androidKeyStore.load(null);
             Log.d(TAG, "  ✓ AndroidKeyStore loaded");
+            Log.d(TAG, "  AndroidKeyStore type: " + androidKeyStore.getType());
+            Log.d(TAG, "  AndroidKeyStore provider: " + androidKeyStore.getProvider().getName());
 
             // List all aliases for debugging
             java.util.Enumeration<String> aliases = androidKeyStore.aliases();
             Log.d(TAG, "  Available aliases in AndroidKeyStore:");
+            int aliasCount = 0;
             while (aliases.hasMoreElements()) {
                 String alias = aliases.nextElement();
+                aliasCount++;
                 Log.d(TAG, "    - " + alias);
+                
+                // Get additional info about each alias
+                try {
+                    if (androidKeyStore.isKeyEntry(alias)) {
+                        Log.d(TAG, "      Type: Private Key Entry");
+                    } else if (androidKeyStore.isCertificateEntry(alias)) {
+                        Log.d(TAG, "      Type: Certificate Entry");
+                    }
+                } catch (Exception e) {
+                    Log.d(TAG, "      Could not determine type: " + e.getMessage());
+                }
             }
+            Log.d(TAG, "  Total aliases: " + aliasCount);
 
             Log.d(TAG, "  Looking for private key with alias: " + privateKeyAlias);
 
@@ -455,6 +540,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
             }
 
             Log.d(TAG, "  ✓ Private key alias found in keystore");
+            Log.d(TAG, "  Alias is key entry: " + androidKeyStore.isKeyEntry(privateKeyAlias));
 
             // Get the key entry from Android Keystore
             KeyStore.Entry entry = androidKeyStore.getEntry(privateKeyAlias, null);
@@ -468,6 +554,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.i(TAG, "  ✓✓✓ Private key retrieved from AndroidKeyStore successfully");
             Log.d(TAG, "  Private key algorithm: " + privateKey.getAlgorithm());
             Log.d(TAG, "  Private key format: " + privateKey.getFormat());
+            Log.d(TAG, "  Private key class: " + privateKey.getClass().getName());
 
             // Step 2: Parse client certificate
             Log.d(TAG, "");
@@ -476,6 +563,8 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
             CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+            Log.d(TAG, "  Certificate factory type: " + certFactory.getType());
+            Log.d(TAG, "  Certificate factory provider: " + certFactory.getProvider().getName());
 
             InputStream clientCertStream = new ByteArrayInputStream(clientCertPem.getBytes());
             Collection<? extends java.security.cert.Certificate> clientCerts = certFactory
@@ -496,11 +585,23 @@ public class MqttModule extends ReactContextBaseJavaModule {
             // First certificate is always the client certificate
             X509Certificate clientCert = clientCertsList.get(0);
             Log.i(TAG, "  ✓ Client certificate (leaf) parsed");
+            Log.d(TAG, "  ═══ CLIENT CERTIFICATE DETAILS ═══");
             Log.d(TAG, "  Subject: " + clientCert.getSubjectDN());
             Log.d(TAG, "  Issuer: " + clientCert.getIssuerDN());
+            Log.d(TAG, "  Serial: " + clientCert.getSerialNumber());
             Log.d(TAG, "  Valid from: " + clientCert.getNotBefore());
             Log.d(TAG, "  Valid until: " + clientCert.getNotAfter());
-            Log.d(TAG, "  Serial: " + clientCert.getSerialNumber());
+            Log.d(TAG, "  Signature algorithm: " + clientCert.getSigAlgName());
+            Log.d(TAG, "  Public key algorithm: " + clientCert.getPublicKey().getAlgorithm());
+            Log.d(TAG, "  Version: " + clientCert.getVersion());
+            
+            // Check if certificate is currently valid
+            try {
+                clientCert.checkValidity();
+                Log.d(TAG, "  Certificate validity: ✓ VALID (current date is within validity period)");
+            } catch (Exception e) {
+                Log.e(TAG, "  Certificate validity: ❌ INVALID - " + e.getMessage());
+            }
 
             // Any additional certificates are intermediate CAs
             if (clientCertsList.size() > 1) {
@@ -508,9 +609,19 @@ public class MqttModule extends ReactContextBaseJavaModule {
                         + " intermediate certificate(s) found in client cert file");
                 for (int i = 1; i < clientCertsList.size(); i++) {
                     X509Certificate intermediateCert = clientCertsList.get(i);
-                    Log.d(TAG, "  Intermediate #" + (i) + ":");
+                    Log.d(TAG, "  ═══ INTERMEDIATE CERTIFICATE #" + i + " ═══");
                     Log.d(TAG, "    Subject: " + intermediateCert.getSubjectDN());
                     Log.d(TAG, "    Issuer: " + intermediateCert.getIssuerDN());
+                    Log.d(TAG, "    Serial: " + intermediateCert.getSerialNumber());
+                    Log.d(TAG, "    Valid from: " + intermediateCert.getNotBefore());
+                    Log.d(TAG, "    Valid until: " + intermediateCert.getNotAfter());
+                    
+                    try {
+                        intermediateCert.checkValidity();
+                        Log.d(TAG, "    Certificate validity: ✓ VALID");
+                    } catch (Exception e) {
+                        Log.e(TAG, "    Certificate validity: ❌ INVALID - " + e.getMessage());
+                    }
                 }
             }
 
@@ -534,34 +645,57 @@ public class MqttModule extends ReactContextBaseJavaModule {
             for (java.security.cert.Certificate cert : caCerts) {
                 X509Certificate caCert = (X509Certificate) cert;
                 rootCaCertsList.add(caCert);
-                Log.d(TAG, "  Root CA #" + certIndex + ":");
+                Log.d(TAG, "  ═══ ROOT CA CERTIFICATE #" + certIndex + " ═══");
                 Log.d(TAG, "    Subject: " + caCert.getSubjectDN());
                 Log.d(TAG, "    Issuer: " + caCert.getIssuerDN());
+                Log.d(TAG, "    Serial: " + caCert.getSerialNumber());
                 Log.d(TAG, "    Valid from: " + caCert.getNotBefore());
                 Log.d(TAG, "    Valid until: " + caCert.getNotAfter());
+                Log.d(TAG, "    Signature algorithm: " + caCert.getSigAlgName());
+                Log.d(TAG, "    Is self-signed: " + caCert.getIssuerDN().equals(caCert.getSubjectDN()));
+                
+                try {
+                    caCert.checkValidity();
+                    Log.d(TAG, "    Certificate validity: ✓ VALID");
+                } catch (Exception e) {
+                    Log.e(TAG, "    Certificate validity: ❌ INVALID - " + e.getMessage());
+                }
+                
                 certIndex++;
             }
 
-            // Step 4: Build certificate chain
+            // Step 4: Build certificate chain (excluding root CA)
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
             Log.d(TAG, "│ Step 4: Building Certificate Chain");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
-            // Build the complete chain: client cert + all intermediate certs from client
-            // cert file
+            // Build the chain: client cert + intermediates ONLY (exclude root CA)
             ArrayList<java.security.cert.Certificate> certChainList = new ArrayList<>();
 
-            // Add all certificates from the client cert file (client + intermediates)
-            certChainList.addAll(clientCertsList);
-            Log.d(TAG, "  ✓ Added " + clientCertsList.size() + " certificate(s) from client cert file");
+            // Add only non-self-signed certificates (exclude root CAs)
+            for (X509Certificate cert : clientCertsList) {
+                // Check if certificate is self-signed (root CA)
+                boolean isSelfSigned = cert.getIssuerDN().equals(cert.getSubjectDN());
+                
+                if (!isSelfSigned) {
+                    certChainList.add(cert);
+                    Log.d(TAG, "  ✓ Added to chain: " + cert.getSubjectDN());
+                } else {
+                    Log.d(TAG, "  ⊗ Excluded root CA from chain: " + cert.getSubjectDN());
+                }
+            }
+
+            Log.d(TAG, "  Total certificates added to chain: " + certChainList.size());
 
             java.security.cert.Certificate[] certChain = certChainList.toArray(new java.security.cert.Certificate[0]);
             Log.i(TAG, "");
             Log.i(TAG, "✓✓✓ Certificate chain built with " + certChain.length + " certificate(s)");
+            Log.d(TAG, "  ═══ FINAL CERTIFICATE CHAIN TO BE SENT TO BROKER ═══");
             for (int i = 0; i < certChain.length; i++) {
                 X509Certificate cert = (X509Certificate) certChain[i];
                 Log.d(TAG, "  Chain[" + i + "]: " + cert.getSubjectDN());
+                Log.d(TAG, "    Issued by: " + cert.getIssuerDN());
             }
 
             // Step 5: Create KeyStore with private key from AndroidKeyStore
@@ -571,14 +705,17 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
             KeyStore keyStore = KeyStore.getInstance("PKCS12");
-            Log.d(TAG, "  KeyStore type: PKCS12");
+            Log.d(TAG, "  KeyStore type: " + keyStore.getType());
+            Log.d(TAG, "  KeyStore provider: " + keyStore.getProvider().getName());
             keyStore.load(null, null);
             Log.d(TAG, "  ✓ KeyStore initialized");
 
             // Add the private key (from AndroidKeyStore) with the certificate chain
             keyStore.setKeyEntry("client-key", privateKey, "".toCharArray(), certChain);
-            Log.d(TAG, "  ✓ Client private key added to KeyStore with " + certChain.length + "-cert chain");
-            Log.d(TAG, "  ✓ Private key remains in AndroidKeyStore (hardware-backed)");
+            Log.d(TAG, "  ✓ Client private key added to KeyStore");
+            Log.d(TAG, "    Entry alias: client-key");
+            Log.d(TAG, "    Certificate chain length: " + certChain.length);
+            Log.d(TAG, "    Private key stays in AndroidKeyStore: YES (hardware-backed)");
 
             // Step 6: Initialize KeyManagerFactory
             Log.d(TAG, "");
@@ -588,8 +725,15 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
             Log.d(TAG, "  KeyManagerFactory algorithm: " + kmf.getAlgorithm());
+            Log.d(TAG, "  KeyManagerFactory provider: " + kmf.getProvider().getName());
             kmf.init(keyStore, "".toCharArray());
             Log.i(TAG, "  ✓ KeyManagerFactory initialized successfully");
+            
+            KeyManager[] keyManagers = kmf.getKeyManagers();
+            Log.d(TAG, "  Number of KeyManagers: " + keyManagers.length);
+            for (int i = 0; i < keyManagers.length; i++) {
+                Log.d(TAG, "    KeyManager[" + i + "]: " + keyManagers[i].getClass().getName());
+            }
 
             // Step 7: Create TrustStore for CA certificate(s)
             Log.d(TAG, "");
@@ -598,15 +742,21 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
             KeyStore trustStore = KeyStore.getInstance("PKCS12");
-            Log.d(TAG, "  TrustStore type: PKCS12");
+            Log.d(TAG, "  TrustStore type: " + trustStore.getType());
+            Log.d(TAG, "  TrustStore provider: " + trustStore.getProvider().getName());
             trustStore.load(null, null);
             Log.d(TAG, "  ✓ TrustStore initialized");
 
             // Add ALL CA certificates to TrustStore
             certIndex = 0;
+            Log.d(TAG, "  ═══ CERTIFICATES ADDED TO TRUSTSTORE ═══");
             for (java.security.cert.Certificate cert : caCerts) {
-                trustStore.setCertificateEntry("ca-" + certIndex, cert);
-                Log.d(TAG, "  ✓ CA certificate #" + certIndex + " added to TrustStore");
+                X509Certificate x509Cert = (X509Certificate) cert;
+                String alias = "ca-" + certIndex;
+                trustStore.setCertificateEntry(alias, cert);
+                Log.d(TAG, "  ✓ CA certificate #" + certIndex + " added");
+                Log.d(TAG, "    Alias: " + alias);
+                Log.d(TAG, "    Subject: " + x509Cert.getSubjectDN());
                 certIndex++;
             }
             Log.i(TAG, "  ✓✓✓ All " + caCerts.size() + " CA certificate(s) added to TrustStore");
@@ -619,8 +769,24 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             Log.d(TAG, "  TrustManagerFactory algorithm: " + tmf.getAlgorithm());
+            Log.d(TAG, "  TrustManagerFactory provider: " + tmf.getProvider().getName());
             tmf.init(trustStore);
             Log.i(TAG, "  ✓ TrustManagerFactory initialized successfully");
+            
+            TrustManager[] trustManagers = tmf.getTrustManagers();
+            Log.d(TAG, "  Number of TrustManagers: " + trustManagers.length);
+            for (int i = 0; i < trustManagers.length; i++) {
+                Log.d(TAG, "    TrustManager[" + i + "]: " + trustManagers[i].getClass().getName());
+                
+                if (trustManagers[i] instanceof X509TrustManager) {
+                    X509TrustManager x509TrustManager = (X509TrustManager) trustManagers[i];
+                    java.security.cert.X509Certificate[] acceptedIssuers = x509TrustManager.getAcceptedIssuers();
+                    Log.d(TAG, "      Accepted issuers count: " + acceptedIssuers.length);
+                    for (int j = 0; j < acceptedIssuers.length; j++) {
+                        Log.d(TAG, "        Issuer[" + j + "]: " + acceptedIssuers[j].getSubjectDN());
+                    }
+                }
+            }
 
             // Step 9: Create SSLContext with TLS
             Log.d(TAG, "");
@@ -639,16 +805,33 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             // Log supported protocols and cipher suites
             try {
+                Log.d(TAG, "  ═══ SSL/TLS CONFIGURATION ═══");
+                
                 String[] supportedProtocols = sslContext.getSupportedSSLParameters().getProtocols();
-                Log.d(TAG, "  Supported SSL/TLS protocols: " + java.util.Arrays.toString(supportedProtocols));
+                Log.d(TAG, "  Supported protocols (" + supportedProtocols.length + "): " + 
+                      java.util.Arrays.toString(supportedProtocols));
 
                 String[] defaultProtocols = sslContext.getDefaultSSLParameters().getProtocols();
-                Log.d(TAG, "  Default SSL/TLS protocols: " + java.util.Arrays.toString(defaultProtocols));
+                Log.d(TAG, "  Default protocols (" + defaultProtocols.length + "): " + 
+                      java.util.Arrays.toString(defaultProtocols));
 
-                String[] cipherSuites = sslContext.getDefaultSSLParameters().getCipherSuites();
-                Log.d(TAG, "  Number of default cipher suites: " + cipherSuites.length);
-                Log.d(TAG, "  First 5 cipher suites: " + java.util.Arrays
-                        .toString(java.util.Arrays.copyOfRange(cipherSuites, 0, Math.min(5, cipherSuites.length))));
+                String[] supportedCipherSuites = sslContext.getSupportedSSLParameters().getCipherSuites();
+                Log.d(TAG, "  Total supported cipher suites: " + supportedCipherSuites.length);
+                
+                String[] defaultCipherSuites = sslContext.getDefaultSSLParameters().getCipherSuites();
+                Log.d(TAG, "  Default cipher suites (" + defaultCipherSuites.length + "):");
+                for (int i = 0; i < Math.min(10, defaultCipherSuites.length); i++) {
+                    Log.d(TAG, "    " + (i + 1) + ". " + defaultCipherSuites[i]);
+                }
+                if (defaultCipherSuites.length > 10) {
+                    Log.d(TAG, "    ... and " + (defaultCipherSuites.length - 10) + " more");
+                }
+                
+                Log.d(TAG, "  Client authentication required: " + 
+                      sslContext.getDefaultSSLParameters().getNeedClientAuth());
+                Log.d(TAG, "  Client authentication wanted: " + 
+                      sslContext.getDefaultSSLParameters().getWantClientAuth());
+                      
             } catch (Exception e) {
                 Log.w(TAG, "  ⚠️ Could not log SSL parameters: " + e.getMessage());
             }
