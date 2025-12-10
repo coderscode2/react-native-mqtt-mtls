@@ -472,7 +472,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
             // Step 2: Parse client certificate
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "│ Step 2: Parsing Client Certificate");
+            Log.d(TAG, "│ Step 2: Parsing Client Certificate(s)");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
             CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
@@ -485,18 +485,39 @@ public class MqttModule extends ReactContextBaseJavaModule {
                 throw new Exception("No client certificate found in PEM");
             }
 
-            X509Certificate clientCert = (X509Certificate) clientCerts.iterator().next();
-            Log.i(TAG, "  ✓ Client certificate parsed");
+            Log.i(TAG, "  ✓ " + clientCerts.size() + " certificate(s) parsed from client cert file");
+
+            // Convert to list for easier handling
+            ArrayList<X509Certificate> clientCertsList = new ArrayList<>();
+            for (java.security.cert.Certificate cert : clientCerts) {
+                clientCertsList.add((X509Certificate) cert);
+            }
+
+            // First certificate is always the client certificate
+            X509Certificate clientCert = clientCertsList.get(0);
+            Log.i(TAG, "  ✓ Client certificate (leaf) parsed");
             Log.d(TAG, "  Subject: " + clientCert.getSubjectDN());
             Log.d(TAG, "  Issuer: " + clientCert.getIssuerDN());
             Log.d(TAG, "  Valid from: " + clientCert.getNotBefore());
             Log.d(TAG, "  Valid until: " + clientCert.getNotAfter());
             Log.d(TAG, "  Serial: " + clientCert.getSerialNumber());
 
-            // Step 3: Parse CA certificates
+            // Any additional certificates are intermediate CAs
+            if (clientCertsList.size() > 1) {
+                Log.i(TAG, "  ✓ " + (clientCertsList.size() - 1)
+                        + " intermediate certificate(s) found in client cert file");
+                for (int i = 1; i < clientCertsList.size(); i++) {
+                    X509Certificate intermediateCert = clientCertsList.get(i);
+                    Log.d(TAG, "  Intermediate #" + (i) + ":");
+                    Log.d(TAG, "    Subject: " + intermediateCert.getSubjectDN());
+                    Log.d(TAG, "    Issuer: " + intermediateCert.getIssuerDN());
+                }
+            }
+
+            // Step 3: Parse CA certificates (ROOT CA)
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "│ Step 3: Parsing CA Certificate(s)");
+            Log.d(TAG, "│ Step 3: Parsing Root CA Certificate(s)");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
             InputStream caStream = new ByteArrayInputStream(rootCaPem.getBytes());
@@ -506,14 +527,14 @@ public class MqttModule extends ReactContextBaseJavaModule {
                 throw new Exception("No CA certificates found in PEM");
             }
 
-            Log.i(TAG, "  ✓ " + caCerts.size() + " CA certificate(s) parsed");
+            Log.i(TAG, "  ✓ " + caCerts.size() + " root CA certificate(s) parsed");
 
             int certIndex = 0;
-            ArrayList<X509Certificate> caCertsList = new ArrayList<>();
+            ArrayList<X509Certificate> rootCaCertsList = new ArrayList<>();
             for (java.security.cert.Certificate cert : caCerts) {
                 X509Certificate caCert = (X509Certificate) cert;
-                caCertsList.add(caCert);
-                Log.d(TAG, "  CA #" + certIndex + ":");
+                rootCaCertsList.add(caCert);
+                Log.d(TAG, "  Root CA #" + certIndex + ":");
                 Log.d(TAG, "    Subject: " + caCert.getSubjectDN());
                 Log.d(TAG, "    Issuer: " + caCert.getIssuerDN());
                 Log.d(TAG, "    Valid from: " + caCert.getNotBefore());
@@ -527,31 +548,13 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "│ Step 4: Building Certificate Chain");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
+            // Build the complete chain: client cert + all intermediate certs from client
+            // cert file
             ArrayList<java.security.cert.Certificate> certChainList = new ArrayList<>();
-            certChainList.add(clientCert);
 
-            // Find intermediate CA(s) by matching issuer
-            String clientIssuer = clientCert.getIssuerDN().toString();
-            for (X509Certificate caCert : caCertsList) {
-                String caSubject = caCert.getSubjectDN().toString();
-                if (clientIssuer.equals(caSubject)) {
-                    certChainList.add(caCert);
-                    Log.d(TAG, "  ✓ Found intermediate CA: " + caSubject);
-
-                    // Check if this intermediate is issued by another CA (build full chain)
-                    String caIssuer = caCert.getIssuerDN().toString();
-                    if (!caSubject.equals(caIssuer)) { // Not self-signed
-                        for (X509Certificate rootCaCert : caCertsList) {
-                            if (caIssuer.equals(rootCaCert.getSubjectDN().toString())) {
-                                certChainList.add(rootCaCert);
-                                Log.d(TAG, "  ✓ Found root CA: " + rootCaCert.getSubjectDN());
-                                break;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
+            // Add all certificates from the client cert file (client + intermediates)
+            certChainList.addAll(clientCertsList);
+            Log.d(TAG, "  ✓ Added " + clientCertsList.size() + " certificate(s) from client cert file");
 
             java.security.cert.Certificate[] certChain = certChainList.toArray(new java.security.cert.Certificate[0]);
             Log.i(TAG, "");
