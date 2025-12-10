@@ -10,13 +10,14 @@ import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
+import org.eclipse.paho.android.service.MqttAndroidClient;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.IMqttActionListener;
+import org.eclipse.paho.client.mqttv3.IMqttToken;
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.openssl.PEMParser;
@@ -56,7 +57,7 @@ import javax.net.ssl.SNIHostName;
 public class MqttModule extends ReactContextBaseJavaModule {
     private static final String TAG = "MqttModule";
     private final ReactApplicationContext reactContext;
-    private MqttClient client;
+    private MqttAndroidClient client;
 
     // Configuration constants - MODIFY THESE FOR YOUR ENVIRONMENT
     private static final String UUID_HOSTNAME = "5dab25dd-7d0a-4a03-94c3-39f935c0a48a";
@@ -254,13 +255,13 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "  Private key alias: " + privateKeyAlias);
             Log.d(TAG, "  Root CA length: " + rootCaPem.length() + " bytes");
 
-            // Initialize MQTT client
+            // Initialize MQTT Android client
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "│ Step 1: Creating MQTT Client");
+            Log.d(TAG, "│ Step 1: Creating MQTT Android Client");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
-            client = new MqttClient(broker, clientId, new MemoryPersistence());
-            Log.i(TAG, "✓ MQTT client created successfully");
+            client = new MqttAndroidClient(reactContext, broker, clientId);
+            Log.i(TAG, "✓ MQTT Android client created successfully");
 
             // Configure connection options
             Log.d(TAG, "");
@@ -385,18 +386,49 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "║ Client ID: " + clientId);
             Log.d(TAG, "╚════════════════════════════════════════════════════════════════");
 
-            client.connect(options);
+            client.connect(options, null, new IMqttActionListener() {
+                @Override
+                public void onSuccess(IMqttToken asyncActionToken) {
+                    Log.i(TAG, "");
+                    Log.i(TAG, "╔════════════════════════════════════════════════════════════════");
+                    Log.i(TAG, "║ ✓✓✓ MQTT CLIENT SUCCESSFULLY CONNECTED ✓✓✓");
+                    Log.i(TAG, "╠════════════════════════════════════════════════════════════════");
+                    Log.i(TAG, "║ Broker: " + broker);
+                    Log.i(TAG, "║ Client ID: " + clientId);
+                    Log.i(TAG, "║ Connection established at: " + new java.util.Date().toString());
+                    Log.i(TAG, "╚════════════════════════════════════════════════════════════════");
+                    
+                    successCallback.invoke("Connected to " + broker);
+                }
 
-            Log.i(TAG, "");
-            Log.i(TAG, "╔════════════════════════════════════════════════════════════════");
-            Log.i(TAG, "║ ✓✓✓ MQTT CLIENT SUCCESSFULLY CONNECTED ✓✓✓");
-            Log.i(TAG, "╠════════════════════════════════════════════════════════════════");
-            Log.i(TAG, "║ Broker: " + broker);
-            Log.i(TAG, "║ Client ID: " + clientId);
-            Log.i(TAG, "║ Connection established at: " + new java.util.Date().toString());
-            Log.i(TAG, "╚════════════════════════════════════════════════════════════════");
-
-            successCallback.invoke("Connected to " + broker);
+                @Override
+                public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
+                    Log.e(TAG, "");
+                    Log.e(TAG, "╔════════════════════════════════════════════════════════════════");
+                    Log.e(TAG, "║ ❌❌❌ MQTT CONNECTION FAILED IN ASYNC CALLBACK");
+                    Log.e(TAG, "╠════════════════════════════════════════════════════════════════");
+                    Log.e(TAG, "║ Error: " + exception.getMessage());
+                    Log.e(TAG, "║ Type: " + exception.getClass().getName());
+                    Log.e(TAG, "║ Timestamp: " + new java.util.Date().toString());
+                    
+                    if (exception.getCause() != null) {
+                        Log.e(TAG, "╠════════════════════════════════════════════════════════════════");
+                        Log.e(TAG, "║ Root Cause: " + exception.getCause().getMessage());
+                        Log.e(TAG, "║ Root Cause Type: " + exception.getCause().getClass().getName());
+                    }
+                    Log.e(TAG, "╚════════════════════════════════════════════════════════════════");
+                    
+                    Log.e(TAG, "=== Full Stack Trace ===");
+                    exception.printStackTrace();
+                    
+                    if (exception.getCause() != null) {
+                        Log.e(TAG, "=== Root Cause Stack Trace ===");
+                        exception.getCause().printStackTrace();
+                    }
+                    
+                    errorCallback.invoke("Connection failed: " + exception.getMessage());
+                }
+            });
 
         } catch (Exception e) {
             Log.e(TAG, "");
@@ -435,9 +467,20 @@ public class MqttModule extends ReactContextBaseJavaModule {
                 throw new MqttException(MqttException.REASON_CODE_CLIENT_NOT_CONNECTED);
             }
 
-            client.subscribe(topic, qos);
-            Log.i(TAG, "✓ Successfully subscribed to: " + topic);
-            successCallback.invoke("Subscribed to " + topic);
+            client.subscribe(topic, qos, null, new IMqttActionListener() {
+                @Override
+                public void onSuccess(IMqttToken asyncActionToken) {
+                    Log.i(TAG, "✓ Successfully subscribed to: " + topic);
+                    successCallback.invoke("Subscribed to " + topic);
+                }
+
+                @Override
+                public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
+                    Log.e(TAG, "❌ Subscribe failed: " + exception.getMessage());
+                    exception.printStackTrace();
+                    errorCallback.invoke("Subscribe failed: " + exception.getMessage());
+                }
+            });
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Subscribe failed: " + e.getMessage());
@@ -455,9 +498,20 @@ public class MqttModule extends ReactContextBaseJavaModule {
                 throw new MqttException(MqttException.REASON_CODE_CLIENT_NOT_CONNECTED);
             }
 
-            client.unsubscribe(topic);
-            Log.i(TAG, "✓ Successfully unsubscribed from: " + topic);
-            successCallback.invoke("Unsubscribed from " + topic);
+            client.unsubscribe(topic, null, new IMqttActionListener() {
+                @Override
+                public void onSuccess(IMqttToken asyncActionToken) {
+                    Log.i(TAG, "✓ Successfully unsubscribed from: " + topic);
+                    successCallback.invoke("Unsubscribed from " + topic);
+                }
+
+                @Override
+                public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
+                    Log.e(TAG, "❌ Unsubscribe failed: " + exception.getMessage());
+                    exception.printStackTrace();
+                    errorCallback.invoke("Unsubscribe failed: " + exception.getMessage());
+                }
+            });
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Unsubscribe failed: " + e.getMessage());
@@ -483,9 +537,20 @@ public class MqttModule extends ReactContextBaseJavaModule {
             mqttMessage.setQos(qos);
             mqttMessage.setRetained(retained);
 
-            client.publish(topic, mqttMessage);
-            Log.i(TAG, "✓ Message published successfully");
-            successCallback.invoke("Published to " + topic);
+            client.publish(topic, mqttMessage, null, new IMqttActionListener() {
+                @Override
+                public void onSuccess(IMqttToken asyncActionToken) {
+                    Log.i(TAG, "✓ Message published successfully");
+                    successCallback.invoke("Published to " + topic);
+                }
+
+                @Override
+                public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
+                    Log.e(TAG, "❌ Publish failed: " + exception.getMessage());
+                    exception.printStackTrace();
+                    errorCallback.invoke("Publish failed: " + exception.getMessage());
+                }
+            });
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Publish failed: " + e.getMessage());
@@ -506,15 +571,34 @@ public class MqttModule extends ReactContextBaseJavaModule {
             }
 
             if (client.isConnected()) {
-                client.disconnect();
-                Log.i(TAG, "✓ Disconnected from broker");
+                client.disconnect(null, new IMqttActionListener() {
+                    @Override
+                    public void onSuccess(IMqttToken asyncActionToken) {
+                        Log.i(TAG, "✓ Disconnected from broker");
+                        try {
+                            client.close();
+                            client = null;
+                            Log.i(TAG, "✓ MQTT client closed");
+                            successCallback.invoke("Disconnected successfully");
+                        } catch (Exception e) {
+                            Log.e(TAG, "❌ Error closing client: " + e.getMessage());
+                            errorCallback.invoke("Disconnect error: " + e.getMessage());
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
+                        Log.e(TAG, "❌ Disconnect failed: " + exception.getMessage());
+                        exception.printStackTrace();
+                        errorCallback.invoke("Disconnect failed: " + exception.getMessage());
+                    }
+                });
+            } else {
+                client.close();
+                client = null;
+                Log.i(TAG, "✓ MQTT client closed (was not connected)");
+                successCallback.invoke("Disconnected successfully");
             }
-
-            client.close();
-            client = null;
-
-            Log.i(TAG, "✓ MQTT client closed");
-            successCallback.invoke("Disconnected successfully");
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Disconnect failed: " + e.getMessage());
