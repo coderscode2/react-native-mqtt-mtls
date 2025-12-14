@@ -10,25 +10,15 @@ Pod::Spec.new do |s|
                   MQTT with mutual TLS (mTLS) support for React Native.
                   Supports certificate-based authentication for secure IoT connections.
                    DESC
-  s.homepage     = "https://github.com/coderscode2/react-native-mqtt-mtls"
+  s.homepage     = package["homepage"]
   s.license      = package["license"]
   s.authors      = package["author"]
   s.platforms    = { :ios => "12.0" }
-  s.source       = { :git => "https://github.com/coderscode2/react-native-mqtt-mtls.git", :tag => "#{s.version}" }
+  s.source       = { :git => package["repository"]["url"], :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,swift}"
   s.requires_arc = true
 
-  # Use modular headers
-  s.pod_target_xcconfig = {
-    'DEFINES_MODULE' => 'YES'
-  }
-
   s.dependency "React-Core"
-  
-  # Specify modular headers for CocoaMQTT and its dependencies
   s.dependency "CocoaMQTT", "~> 2.1.0"
-  s.dependency "CocoaAsyncSocket", "~> 7.6"
-  
-  s.static_framework = true
 end
