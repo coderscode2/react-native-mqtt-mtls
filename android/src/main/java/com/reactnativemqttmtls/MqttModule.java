@@ -648,7 +648,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             Log.d(TAG, "  PEM object type: " + pemObject.getClass().getName());
 
-            JcaPEMKeyConverter converter = new JcaPEMKeyConverter().setProvider("BC");
+            JcaPEMKeyConverter converter = new JcaPEMKeyConverter();  // Use default provider
             PrivateKey privateKey;
 
             if (pemObject instanceof PEMKeyPair) {
