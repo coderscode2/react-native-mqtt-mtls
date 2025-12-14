@@ -21,10 +21,13 @@ Pod::Spec.new do |s|
   # Make this a static framework
   s.static_framework = true
   
+  # Swift version
+  s.swift_version = '5.0'
+  
   # Enable module map generation
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
-    'CLANG_ENABLE_MODULES' => 'YES'  # ← ADD THIS
+    'SWIFT_VERSION' => '5.0'
   }
 
   s.dependency "React-Core"
