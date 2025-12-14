@@ -7,6 +7,15 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "files": [
+    "android",
+    "ios",
+    "react-native-mqtt-mtls.podspec",
+    "src",
+    "react-native.config.js",
+    "index.ts",
+    "index.d.ts"
+  ],
   "keywords": [
     "react-native",
     "mqtt",
