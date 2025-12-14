@@ -6,8 +6,7 @@ module.exports = {
         packageInstance: 'new MqttMtlsPackage()',
       },
       ios: {
-        // iOS support can be added here in the future
-        // podspecPath: 'react-native-mqtt-mtls.podspec',
+        project: './ios/MqttModule.xcodeproj',
       },
     },
   },
