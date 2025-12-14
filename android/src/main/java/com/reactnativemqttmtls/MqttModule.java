@@ -60,8 +60,10 @@ public class MqttModule extends ReactContextBaseJavaModule {
     private MqttAndroidClient client;
 
     // Configuration constants - MODIFY THESE FOR YOUR ENVIRONMENT
-    private static final String UUID_HOSTNAME = "5dab25dd-7d0a-4a03-94c3-39f935c0a48a";
-    private static final String BROKER_IP = "10.10.10.10";
+    // FIXED: SNI hostname must match broker certificate's SAN
+    private static final String SNI_HOSTNAME = "APCBPGN2202-AF250300028.local";
+    // FIXED: Use emulator IP instead of production IP
+    private static final String BROKER_IP = "10.0.2.2";
     private static final int BROKER_PORT = 8883;
 
     public MqttModule(ReactApplicationContext reactContext) {
@@ -90,11 +92,11 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
     /**
      * Custom SSLSocketFactory that connects to a specific IP while preserving SNI hostname
-     * This solves the DNS resolution issue when using UUIDs as hostnames
+     * This solves the DNS resolution issue when using .local hostnames
      */
     private static class SniIpSocketFactory extends SSLSocketFactory {
         private final SSLSocketFactory delegate;
-        private final String sniHost;       // UUID hostname for SNI
+        private final String sniHost;       // Broker hostname for SNI (must match broker cert SAN)
         private final String realIp;        // Actual broker IP address
 
         public SniIpSocketFactory(SSLSocketFactory delegate, String sniHost, String realIp) {
@@ -292,16 +294,16 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             SSLContext sslContext = createSSLContextFromKeystore(privateKeyAlias, clientCertPem, rootCaPem);
 
-            // Create custom socket factory that handles UUID hostname + IP connection
+            // Create custom socket factory that handles .local hostname + IP connection
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
             Log.d(TAG, "│ Step 3.5: Configuring SNI Socket Factory");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "  SNI Hostname: " + UUID_HOSTNAME);
+            Log.d(TAG, "  SNI Hostname: " + SNI_HOSTNAME);
             Log.d(TAG, "  Real IP: " + BROKER_IP);
             
             SSLSocketFactory baseFactory = sslContext.getSocketFactory();
-            SSLSocketFactory customFactory = new SniIpSocketFactory(baseFactory, UUID_HOSTNAME, BROKER_IP);
+            SSLSocketFactory customFactory = new SniIpSocketFactory(baseFactory, SNI_HOSTNAME, BROKER_IP);
             
             options.setSocketFactory(customFactory);
             Log.i(TAG, "✓ Custom SNI socket factory configured");
