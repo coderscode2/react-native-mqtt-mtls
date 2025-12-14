@@ -1,5 +1,5 @@
 #import "MqttModule.h"
-#import <CocoaMQTT/CocoaMQTT.h>
+@import CocoaMQTT;  // ← CHANGED THIS LINE
 #import <Security/Security.h>
 
 @interface MqttModule () <CocoaMQTTDelegate>
