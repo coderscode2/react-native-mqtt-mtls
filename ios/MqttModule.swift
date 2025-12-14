@@ -113,11 +113,11 @@ class MqttModule: RCTEventEmitter {
                 print("└─────────────────────────────────────────────────────────────")
                 
                 mqtt.sslSettings = [
-                    kCFStreamSSLCertificates as String: sslSettings,
-                    kCFStreamSSLPeerName as String: Self.SNI_HOSTNAME,
-                    kCFStreamSSLLevel as String: kCFStreamSocketSecurityLevelTLSv1_2,
-                    kCFStreamSSLValidatesCertificateChain as String: true
-                ] as [String : Any]
+                    kCFStreamSSLCertificates as String: sslSettings as NSObject,
+                    kCFStreamSSLPeerName as String: Self.SNI_HOSTNAME as NSObject,
+                    kCFStreamSSLLevel as String: "kCFStreamSocketSecurityLevelTLSv1_2" as NSObject,
+                    kCFStreamSSLValidatesCertificateChain as String: NSNumber(value: true)
+                ]
                 
                 print("  ✓ SSL configured with mTLS")
                 print("  ✓ SNI hostname: \(Self.SNI_HOSTNAME)")
