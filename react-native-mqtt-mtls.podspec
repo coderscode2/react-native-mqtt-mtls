@@ -18,17 +18,16 @@ Pod::Spec.new do |s|
   s.source_files = "ios/**/*.{h,m,swift}"
   s.requires_arc = true
 
-  # Make this a static framework to work with Swift pods
+  # Make this a static framework
   s.static_framework = true
   
   # Enable module map generation
   s.pod_target_xcconfig = {
-    'DEFINES_MODULE' => 'YES'
+    'DEFINES_MODULE' => 'YES',
+    'CLANG_ENABLE_MODULES' => 'YES'  # ← ADD THIS
   }
 
   s.dependency "React-Core"
   s.dependency "CocoaMQTT", "~> 2.1.0"
-  
-  # Explicitly add the socket dependency with version that supports modular headers
   s.dependency "CocoaAsyncSocket", "~> 7.6"
 end
