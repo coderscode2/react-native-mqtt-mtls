@@ -638,7 +638,8 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
             PEMParser pemParser = new PEMParser(new StringReader(privateKeyPem));
-            Object pemObject = pemParser.parseObject();
+            Object pemObject = pemParser.readObject();
+
             pemParser.close();
 
             if (pemObject == null) {
