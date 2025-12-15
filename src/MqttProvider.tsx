@@ -71,6 +71,8 @@ export const MqttProvider = ({ children }) => {
           config.broker,
           config.clientId,
           config.certificates,
+          config.sniHostname,
+          config.brokerIp,
           (success) => {
             console.log('Connect success:', success);
             resolve(success);
