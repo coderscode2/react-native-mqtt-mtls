@@ -20,15 +20,10 @@ import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 
-import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
-import org.bouncycastle.openssl.PEMParser;
-import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
-import org.bouncycastle.openssl.PEMKeyPair;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
-import java.io.StringReader;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
@@ -229,8 +224,8 @@ public class MqttModule extends ReactContextBaseJavaModule {
             String clientCertPem = certificates.hasKey("clientCert")
                     ? sanitizePEM(certificates.getString("clientCert"), "Client Cert")
                     : null;
-            String privateKeyPem = certificates.hasKey("privateKey")
-                    ? sanitizePEM(certificates.getString("privateKey"), "Private Key")
+            String privateKeyAlias = certificates.hasKey("privateKeyAlias")
+                    ? certificates.getString("privateKeyAlias")
                     : null;
             String rootCaPem = certificates.hasKey("rootCa")
                     ? sanitizePEM(certificates.getString("rootCa"), "Root CA")
@@ -244,20 +239,20 @@ public class MqttModule extends ReactContextBaseJavaModule {
                     ? certificates.getString("brokerIp") 
                     : null;
 
-            // Validate that all required certificates are provided
-            if (clientCertPem == null || privateKeyPem == null || rootCaPem == null) {
-                String error = "Missing certificate content. Please provide clientCert, privateKey, and rootCa.";
+            // Validate that all required parameters are provided
+            if (clientCertPem == null || privateKeyAlias == null || rootCaPem == null) {
+                String error = "Missing required parameters. Please provide clientCert, privateKeyAlias, and rootCa.";
                 Log.e(TAG, "❌ " + error);
                 Log.e(TAG, "  clientCert provided: " + (clientCertPem != null));
-                Log.e(TAG, "  privateKey provided: " + (privateKeyPem != null));
+                Log.e(TAG, "  privateKeyAlias provided: " + (privateKeyAlias != null));
                 Log.e(TAG, "  rootCa provided: " + (rootCaPem != null));
                 errorCallback.invoke(error);
                 return;
             }
 
-            Log.i(TAG, "✓ All certificates provided and sanitized");
+            Log.i(TAG, "✓ All required parameters provided");
             Log.d(TAG, "  Client cert length: " + clientCertPem.length() + " bytes");
-            Log.d(TAG, "  Private key length: " + privateKeyPem.length() + " bytes");
+            Log.d(TAG, "  Private key alias: " + privateKeyAlias);
             Log.d(TAG, "  Root CA length: " + rootCaPem.length() + " bytes");
             
             if (sniHostname != null && brokerIp != null) {
@@ -299,13 +294,13 @@ public class MqttModule extends ReactContextBaseJavaModule {
             options.setKeepAliveInterval(60);
             Log.d(TAG, "  ✓ Keep alive interval: 60 seconds");
 
-            // Create SSL context with PEM private key
+            // Create SSL context with hardware-backed private key
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "│ Step 3: Creating SSL Context");
+            Log.d(TAG, "│ Step 3: Creating SSL Context with Hardware Key");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
-            SSLContext sslContext = createSSLContextFromPEM(privateKeyPem, clientCertPem, rootCaPem);
+            SSLContext sslContext = createSSLContextWithHardwareKey(privateKeyAlias, clientCertPem, rootCaPem);
 
             // Configure socket factory based on whether SNI configuration is provided
             if (sniHostname != null && brokerIp != null) {
@@ -641,59 +636,43 @@ public class MqttModule extends ReactContextBaseJavaModule {
     }
 
     /**
-     * Creates an SSLContext using PEM-encoded private key, client certificate, and CA certificates
+     * Creates an SSLContext using hardware-backed private key and PEM certificates
      * 
-     * @param privateKeyPem   The private key in PEM format
+     * @param privateKeyAlias The alias of the private key in Android KeyStore
      * @param clientCertPem   The client certificate in PEM format (can include intermediate certs)
      * @param rootCaPem       The root CA certificate(s) in PEM format
      * @return Configured SSLContext
      */
-    private SSLContext createSSLContextFromPEM(String privateKeyPem, String clientCertPem, String rootCaPem)
+    private SSLContext createSSLContextWithHardwareKey(String privateKeyAlias, String clientCertPem, String rootCaPem)
             throws Exception {
         try {
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "│ Creating SSLContext from PEM Strings");
+            Log.d(TAG, "│ Creating SSLContext with Hardware-Backed Key");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
-            // Step 1: Parse private key from PEM
+            // Step 1: Load private key from Android KeyStore
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "│ Step 1: Parsing Private Key from PEM");
+            Log.d(TAG, "│ Step 1: Loading Private Key from Android KeyStore");
             Log.d(TAG, "└─────────────────────────────────────────────────────────────");
 
-            PEMParser pemParser = new PEMParser(new StringReader(privateKeyPem));
-            Object pemObject = pemParser.readObject();
+            KeyStore androidKeyStore = KeyStore.getInstance("AndroidKeyStore");
+            androidKeyStore.load(null);
+            Log.d(TAG, "  ✓ Android KeyStore loaded");
 
-            pemParser.close();
-
-            if (pemObject == null) {
-                throw new Exception("No private key found in PEM");
+            PrivateKey privateKey = (PrivateKey) androidKeyStore.getKey(privateKeyAlias, null);
+            
+            if (privateKey == null) {
+                throw new Exception("Private key not found in KeyStore with alias: " + privateKeyAlias);
             }
 
-            Log.d(TAG, "  PEM object type: " + pemObject.getClass().getName());
-
-            JcaPEMKeyConverter converter = new JcaPEMKeyConverter();  // Use default provider
-            PrivateKey privateKey;
-
-            if (pemObject instanceof PEMKeyPair) {
-                // PKCS#1 format (BEGIN RSA PRIVATE KEY or BEGIN EC PRIVATE KEY)
-                PEMKeyPair keyPair = (PEMKeyPair) pemObject;
-                privateKey = converter.getPrivateKey(keyPair.getPrivateKeyInfo());
-                Log.d(TAG, "  ✓ Private key parsed (PKCS#1 format)");
-            } else if (pemObject instanceof PrivateKeyInfo) {
-                // PKCS#8 format (BEGIN PRIVATE KEY)
-                PrivateKeyInfo keyInfo = (PrivateKeyInfo) pemObject;
-                privateKey = converter.getPrivateKey(keyInfo);
-                Log.d(TAG, "  ✓ Private key parsed (PKCS#8 format)");
-            } else {
-                throw new Exception("Unsupported private key format: " + pemObject.getClass().getName());
-            }
-
-            Log.i(TAG, "  ✓✓✓ Private key successfully parsed from PEM");
+            Log.i(TAG, "  ✓✓✓ Private key retrieved from hardware");
+            Log.d(TAG, "  Private key alias: " + privateKeyAlias);
             Log.d(TAG, "  Private key algorithm: " + privateKey.getAlgorithm());
             Log.d(TAG, "  Private key format: " + privateKey.getFormat());
             Log.d(TAG, "  Private key class: " + privateKey.getClass().getName());
+            Log.d(TAG, "  Hardware-backed: " + isHardwareBacked(androidKeyStore, privateKeyAlias));
 
             // Step 2: Parse client certificate(s)
             Log.d(TAG, "");
@@ -808,7 +787,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.i(TAG, "");
             Log.i(TAG, "✓✓✓ Certificate chain built with " + certChain.length + " certificate(s)");
 
-            // Step 5: Create KeyStore with private key
+            // Step 5: Create KeyStore with hardware-backed private key
             Log.d(TAG, "");
             Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
             Log.d(TAG, "│ Step 5: Creating KeyStore for SSL");
@@ -820,7 +799,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "  ✓ KeyStore initialized");
 
             keyStore.setKeyEntry("client-key", privateKey, "".toCharArray(), certChain);
-            Log.d(TAG, "  ✓ Client private key and certificate chain added to KeyStore");
+            Log.d(TAG, "  ✓ Hardware-backed private key and certificate chain added to KeyStore");
 
             // Step 6: Initialize KeyManagerFactory
             Log.d(TAG, "");
@@ -870,7 +849,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
             sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
             
             Log.i(TAG, "");
-            Log.i(TAG, "✓✓✓ SSLContext Created Successfully from PEM ✓✓✓");
+            Log.i(TAG, "✓✓✓ SSLContext Created Successfully with Hardware-Backed Key ✓✓✓");
 
             return sslContext;
 
@@ -890,6 +869,34 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             e.printStackTrace();
             throw new Exception("Failed to create SSLContext: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Checks if a key in the KeyStore is backed by hardware
+     */
+    private boolean isHardwareBacked(KeyStore keyStore, String alias) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                PrivateKey key = (PrivateKey) keyStore.getKey(alias, null);
+                if (key instanceof java.security.interfaces.RSAKey) {
+                    // Check if key is inside secure hardware
+                    android.security.keystore.KeyInfo keyInfo;
+                    try {
+                        java.security.KeyFactory factory = java.security.KeyFactory.getInstance(
+                            key.getAlgorithm(), "AndroidKeyStore");
+                        keyInfo = factory.getKeySpec(key, android.security.keystore.KeyInfo.class);
+                        return keyInfo.isInsideSecureHardware();
+                    } catch (Exception e) {
+                        Log.w(TAG, "Could not determine if key is hardware-backed: " + e.getMessage());
+                        return false;
+                    }
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            Log.w(TAG, "Error checking hardware backing: " + e.getMessage());
+            return false;
         }
     }
 
