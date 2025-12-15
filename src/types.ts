@@ -13,6 +13,8 @@ export interface MqttCertificates {
 export interface MqttConfig {
   broker: string;
   clientId: string;
+  sniHostname?: string;
+  brokerIp?: string;
   certificates: MqttCertificates;
   onMessage?: (message: MqttMessage) => void;
   onConnect?: () => void;
