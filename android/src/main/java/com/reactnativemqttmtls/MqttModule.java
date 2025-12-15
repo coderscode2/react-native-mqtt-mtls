@@ -60,11 +60,6 @@ public class MqttModule extends ReactContextBaseJavaModule {
     private final ReactApplicationContext reactContext;
     private MqttAndroidClient client;
 
-    // Configuration constants - MODIFY THESE FOR YOUR ENVIRONMENT
-    private static final String SNI_HOSTNAME = "APCBPGN2202-AF250300028.local";
-    private static final String BROKER_IP = "10.0.2.2";
-    private static final int BROKER_PORT = 8883;
-
     public MqttModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
@@ -241,6 +236,14 @@ public class MqttModule extends ReactContextBaseJavaModule {
                     ? sanitizePEM(certificates.getString("rootCa"), "Root CA")
                     : null;
 
+            // Extract SNI hostname and broker IP from certificates map (optional)
+            String sniHostname = certificates.hasKey("sniHostname") 
+                    ? certificates.getString("sniHostname") 
+                    : null;
+            String brokerIp = certificates.hasKey("brokerIp") 
+                    ? certificates.getString("brokerIp") 
+                    : null;
+
             // Validate that all required certificates are provided
             if (clientCertPem == null || privateKeyPem == null || rootCaPem == null) {
                 String error = "Missing certificate content. Please provide clientCert, privateKey, and rootCa.";
@@ -256,6 +259,16 @@ public class MqttModule extends ReactContextBaseJavaModule {
             Log.d(TAG, "  Client cert length: " + clientCertPem.length() + " bytes");
             Log.d(TAG, "  Private key length: " + privateKeyPem.length() + " bytes");
             Log.d(TAG, "  Root CA length: " + rootCaPem.length() + " bytes");
+            
+            if (sniHostname != null && brokerIp != null) {
+                Log.i(TAG, "✓ SNI configuration provided");
+                Log.d(TAG, "  SNI Hostname: " + sniHostname);
+                Log.d(TAG, "  Broker IP: " + brokerIp);
+            } else {
+                Log.i(TAG, "⚠️ No SNI configuration provided - will use standard connection");
+                Log.d(TAG, "  sniHostname provided: " + (sniHostname != null));
+                Log.d(TAG, "  brokerIp provided: " + (brokerIp != null));
+            }
 
             // Initialize MQTT Android client
             Log.d(TAG, "");
@@ -294,21 +307,32 @@ public class MqttModule extends ReactContextBaseJavaModule {
 
             SSLContext sslContext = createSSLContextFromPEM(privateKeyPem, clientCertPem, rootCaPem);
 
-            // Create custom socket factory that handles .local hostname + IP connection
-            Log.d(TAG, "");
-            Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "│ Step 3.5: Configuring SNI Socket Factory");
-            Log.d(TAG, "└─────────────────────────────────────────────────────────────");
-            Log.d(TAG, "  SNI Hostname: " + SNI_HOSTNAME);
-            Log.d(TAG, "  Real IP: " + BROKER_IP);
-            
-            SSLSocketFactory baseFactory = sslContext.getSocketFactory();
-            SSLSocketFactory customFactory = new SniIpSocketFactory(baseFactory, SNI_HOSTNAME, BROKER_IP);
-            
-            options.setSocketFactory(customFactory);
-            Log.i(TAG, "✓ Custom SNI socket factory configured");
-            Log.i(TAG, "  ✓ DNS resolution bypassed - connecting directly to IP");
-            Log.i(TAG, "  ✓ SNI hostname preserved for certificate validation");
+            // Configure socket factory based on whether SNI configuration is provided
+            if (sniHostname != null && brokerIp != null) {
+                Log.d(TAG, "");
+                Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
+                Log.d(TAG, "│ Step 3.5: Configuring SNI Socket Factory");
+                Log.d(TAG, "└─────────────────────────────────────────────────────────────");
+                Log.d(TAG, "  SNI Hostname: " + sniHostname);
+                Log.d(TAG, "  Real IP: " + brokerIp);
+                
+                SSLSocketFactory baseFactory = sslContext.getSocketFactory();
+                SSLSocketFactory customFactory = new SniIpSocketFactory(baseFactory, sniHostname, brokerIp);
+                
+                options.setSocketFactory(customFactory);
+                Log.i(TAG, "✓ Custom SNI socket factory configured");
+                Log.i(TAG, "  ✓ DNS resolution bypassed - connecting directly to IP");
+                Log.i(TAG, "  ✓ SNI hostname preserved for certificate validation");
+            } else {
+                Log.d(TAG, "");
+                Log.d(TAG, "┌─────────────────────────────────────────────────────────────");
+                Log.d(TAG, "│ Step 3.5: Configuring Standard SSL Socket Factory");
+                Log.d(TAG, "└─────────────────────────────────────────────────────────────");
+                
+                options.setSocketFactory(sslContext.getSocketFactory());
+                Log.i(TAG, "✓ Standard SSL socket factory configured");
+                Log.i(TAG, "  ✓ Using standard DNS resolution");
+            }
 
             // Set up callback
             Log.d(TAG, "");
