@@ -1,19 +1,30 @@
+// OPTION 2: Better Structure (Separate Certificates from Connection Config)
+// This is more semantically correct but requires more changes
+
 export interface MqttMessage {
   topic: string;
   message: string;
   qos: number;
 }
 
+// Pure certificate data
 export interface MqttCertificates {
   clientCert: string;
   privateKeyAlias: string;
   rootCa: string;
 }
 
+// Connection configuration (includes certificates + SNI)
+export interface MqttConnectionConfig {
+  certificates: MqttCertificates;
+  sniHostname?: string;  // Optional SNI hostname for .local domains
+  brokerIp?: string;     // Optional broker IP for bypassing DNS
+}
+
 export interface MqttConfig {
   broker: string;
   clientId: string;
-  certificates: MqttCertificates;
+  connection: MqttConnectionConfig;  // Changed from 'certificates' to 'connection'
   onMessage?: (message: MqttMessage) => void;
   onConnect?: () => void;
   onConnectionLost?: (error: string) => void;
