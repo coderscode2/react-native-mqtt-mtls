@@ -209,7 +209,7 @@ public class MqttModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void connect(String broker, String clientId, ReadableMap certificates, Callback successCallback,
+    public void connect(String broker, String clientId, ReadableMap certificates, String sniHostname, String brokerIp, Callback successCallback,
             Callback errorCallback) {
         try {
             Log.d(TAG, "╔════════════════════════════════════════════════════════════════");
@@ -231,13 +231,13 @@ public class MqttModule extends ReactContextBaseJavaModule {
                     ? sanitizePEM(certificates.getString("rootCa"), "Root CA")
                     : null;
 
-            // Extract SNI hostname and broker IP from certificates map (optional)
-            String sniHostname = certificates.hasKey("sniHostname") 
-                    ? certificates.getString("sniHostname") 
-                    : null;
-            String brokerIp = certificates.hasKey("brokerIp") 
-                    ? certificates.getString("brokerIp") 
-                    : null;
+            // // Extract SNI hostname and broker IP from certificates map (optional)
+            // String sniHostname = certificates.hasKey("sniHostname") 
+            //         ? certificates.getString("sniHostname") 
+            //         : null;
+            // String brokerIp = certificates.hasKey("brokerIp") 
+            //         ? certificates.getString("brokerIp") 
+            //         : null;
 
             // Validate that all required parameters are provided
             if (clientCertPem == null || privateKeyAlias == null || rootCaPem == null) {
