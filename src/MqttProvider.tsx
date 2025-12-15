@@ -1,3 +1,4 @@
+// MqttProvider.tsx for OPTION 2 (Better Structure)
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NativeEventEmitter } from 'react-native';
 import { MqttContext } from './MqttContext';
@@ -66,11 +67,19 @@ export const MqttProvider = ({ children }) => {
     try {
       configRef.current = config;
       
+      // Flatten the connection config for the native module
+      // Combine certificates with SNI settings into a single object
+      const nativeConfig = {
+        ...config.connection.certificates,
+        ...(config.connection.sniHostname && { sniHostname: config.connection.sniHostname }),
+        ...(config.connection.brokerIp && { brokerIp: config.connection.brokerIp }),
+      };
+      
       return new Promise((resolve, reject) => {
         MqttModule.connect(
           config.broker,
           config.clientId,
-          config.certificates,
+          nativeConfig,  // Pass flattened config to native
           (success) => {
             console.log('Connect success:', success);
             resolve(success);
