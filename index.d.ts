@@ -9,7 +9,7 @@ declare module 'react-native-mqtt-mtls' {
 
   export interface MqttCertificates {
     clientCert: string;
-    privateKey: string;      // ← CHANGED from privateKeyAlias
+    privateKeyAlias: string;
     rootCa: string;
   }
 
@@ -49,25 +49,21 @@ declare module 'react-native-mqtt-mtls' {
       successCallback: (message: string) => void,
       errorCallback: (error: string) => void
     ): void;
-
     disconnect(
       successCallback: (message: string) => void,
       errorCallback: (error: string) => void
     ): void;
-
     subscribe(
       topic: string,
       qos: number,
       successCallback: (message: string) => void,
       errorCallback: (error: string) => void
     ): void;
-
     unsubscribe(
       topic: string,
       successCallback: (message: string) => void,
       errorCallback: (error: string) => void
     ): void;
-
     publish(
       topic: string,
       message: string,
@@ -76,7 +72,6 @@ declare module 'react-native-mqtt-mtls' {
       successCallback: (message: string) => void,
       errorCallback: (error: string) => void
     ): void;
-
     isConnected(callback: (isConnected: boolean) => void): void;
   }
 
