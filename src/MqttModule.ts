@@ -5,8 +5,8 @@ interface MqttModuleType {
   connect(
     broker: string,
     clientId: string,
-    sniHostname?: string,
-    brokerIp?: string,
+    sniHostname: string | null,
+    brokerIp: string | null,
     certificates: MqttCertificates,
     successCallback: (message: string) => void,
     errorCallback: (error: string) => void
