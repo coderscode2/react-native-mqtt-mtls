@@ -6,6 +6,11 @@ import React
 @objc(MqttModule)
 class MqttModule: RCTEventEmitter {
     private var mqttClient: CocoaMQTT?
+    private var trustedCACertificates: [SecCertificate] = []
+    private var connectSuccessCallback: RCTResponseSenderBlock?
+    private var connectErrorCallback: RCTResponseSenderBlock?
+    private var brokerUrl: String = ""
+    private var clientIdentifier: String = ""
     private let TAG = "MqttModule"
     
     override init() {
@@ -98,6 +103,15 @@ class MqttModule: RCTEventEmitter {
                 NSLog("│ Creating SSL Configuration")
                 NSLog("└─────────────────────────────────────────────────────────────")
                 
+                // Parse and store CA certificates for server validation
+                let caCerts = try parseCertificatesFromPEM(rootCa)
+                guard !caCerts.isEmpty else {
+                    throw NSError(domain: "MqttModule", code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "No CA certificates found"])
+                }
+                self.trustedCACertificates = caCerts
+                NSLog("  ✓ Stored \(caCerts.count) CA certificate(s) for validation")
+                
                 let sslSettings = try self.createSSLSettings(
                     privateKeyAlias: keyAlias,
                     clientCertPem: clientCert,
@@ -106,68 +120,20 @@ class MqttModule: RCTEventEmitter {
                 )
                 
                 client.enableSSL = true
-                client.allowUntrustCACertificate = false
+                client.allowUntrustCACertificate = true  // We'll validate manually via delegate
                 client.sslSettings = sslSettings
+                client.delegate = self  // Set delegate for certificate validation
                 
                 NSLog("✓ SSL settings configured")
+                NSLog("  Settings keys: \(sslSettings.keys)")
             }
             
-            // Setup callbacks (matching Android events)
-            client.didConnectAck = { [weak self] _, ack in
-                guard let self = self else { return }
-                
-                if ack == .accept {
-                    NSLog("╔════════════════════════════════════════════════════════════════")
-                    NSLog("║ ✓✓✓ MQTT SUCCESSFULLY CONNECTED ✓✓✓")
-                    NSLog("╠════════════════════════════════════════════════════════════════")
-                    NSLog("║ Broker: \(broker)")
-                    NSLog("║ Client ID: \(clientId)")
-                    NSLog("║ Timestamp: \(Date())")
-                    NSLog("╚════════════════════════════════════════════════════════════════")
-                    
-                    self.sendEvent(withName: "MqttConnected", body: "Connected")
-                    successCallback(["Connected to \(broker)"])
-                } else {
-                    let error = "Connection rejected: \(ack)"
-                    NSLog("❌ \(error)")
-                    errorCallback([error])
-                }
-            }
-            
-            client.didReceiveMessage = { [weak self] _, message, _ in
-                guard let self = self else { return }
-                NSLog("📨 Message received on topic: \(message.topic)")
-                
-                self.sendEvent(withName: "MqttMessage", body: [
-                    "topic": message.topic,
-                    "message": message.string ?? "",
-                    "qos": message.qos.rawValue
-                ])
-            }
-            
-            client.didPublishMessage = { [weak self] _, message, _ in
-                guard let self = self else { return }
-                NSLog("📤 Message delivered: \(message.topic)")
-                
-                self.sendEvent(withName: "MqttDeliveryComplete", body: [
-                    "topic": message.topic,
-                    "messageId": message.msgid
-                ])
-            }
-            
-            client.didDisconnect = { [weak self] _, error in
-                guard let self = self else { return }
-                let errorMsg = error?.localizedDescription ?? "Unknown error"
-                
-                NSLog("╔════════════════════════════════════════════════════════════════")
-                NSLog("║ ❌ MQTT Disconnected")
-                NSLog("╠════════════════════════════════════════════════════════════════")
-                NSLog("║ Error: \(errorMsg)")
-                NSLog("║ Timestamp: \(Date())")
-                NSLog("╚════════════════════════════════════════════════════════════════")
-                
-                self.sendEvent(withName: "MqttDisconnected", body: errorMsg)
-            }
+            // Setup callbacks - we'll use delegate methods instead of closures
+            // to properly handle certificate validation
+            self.connectSuccessCallback = successCallback
+            self.connectErrorCallback = errorCallback
+            self.brokerUrl = broker
+            self.clientIdentifier = clientId
             
             self.mqttClient = client
             
@@ -272,63 +238,61 @@ class MqttModule: RCTEventEmitter {
         sniHostname: String?
     ) throws -> [String: NSObject] {
         
-        var settings: [String: NSObject] = [:]
-        
-        // Parse root CA
-        let caCerts = try parseCertificatesFromPEM(rootCaPem)
-        guard !caCerts.isEmpty else {
-            throw NSError(domain: "MqttModule", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "No CA certificates found"])
-        }
-        
-        settings["kCFStreamSSLTrustedCertificates"] = caCerts as NSArray
-        NSLog("  ✓ Root CA certificates added: \(caCerts.count)")
+        NSLog("  Building SSL settings...")
         
         // Create SecIdentity for client certificate
         let identity = try createIdentity(
             privateKeyAlias: privateKeyAlias,
             clientCertPem: clientCertPem
         )
+        NSLog("  ✓ Client identity created")
         
-        settings["kCFStreamSSLCertificates"] = [identity] as NSArray
-        settings["kCFStreamSSLValidatesCertificateChain"] = kCFBooleanTrue
-        NSLog("  ✓ Client identity added")
+        // Build SSL settings dictionary
+        // For CocoaMQTT, we need to provide the client certificate identity
+        var settings: [String: NSObject] = [:]
+        settings[kCFStreamSSLCertificates as String] = [identity] as NSArray
         
-        // SNI hostname
-        if let sniHost = sniHostname {
-            settings["kCFStreamSSLPeerName"] = sniHost as NSString
-            NSLog("  ✓ SNI hostname configured: \(sniHost)")
+        // SNI hostname if provided
+        if let sniHost = sniHostname, !sniHost.isEmpty {
+            settings[kCFStreamSSLPeerName as String] = sniHost as NSString
+            NSLog("  ✓ SNI hostname: \(sniHost)")
         }
         
-        NSLog("✓ SSL configuration complete")
+        NSLog("  ✓ SSL settings created with \(settings.count) entries")
         return settings
     }
     
     private func createIdentity(privateKeyAlias: String, clientCertPem: String) throws -> SecIdentity {
+        NSLog("    Creating SecIdentity...")
+        
         // Load private key from Keychain using alias
+        NSLog("    Loading private key from Keychain: \(privateKeyAlias)")
         guard let privateKey = try loadPrivateKeyFromKeychain(alias: privateKeyAlias) else {
             throw NSError(domain: "MqttModule", code: -1,
                         userInfo: [NSLocalizedDescriptionKey: "Private key not found in Keychain: \(privateKeyAlias)"])
         }
+        NSLog("    ✓ Private key loaded from Keychain")
         
         // Parse certificate from PEM
+        NSLog("    Parsing client certificate from PEM...")
         let certificates = try parseCertificatesFromPEM(clientCertPem)
         guard let certificate = certificates.first else {
             throw NSError(domain: "MqttModule", code: -1,
                         userInfo: [NSLocalizedDescriptionKey: "Failed to parse client certificate"])
         }
+        NSLog("    ✓ Certificate parsed (\(certificates.count) cert(s) in chain)")
         
-        // Add certificate to Keychain and create identity
+        // Add certificate to Keychain temporarily to create identity
         let certLabel = "MQTT_CLIENT_CERT_\(privateKeyAlias)"
         
-        // Delete existing
+        // Delete existing certificate if any
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassCertificate,
             kSecAttrLabel as String: certLabel
         ]
         SecItemDelete(deleteQuery as CFDictionary)
         
-        // Add certificate
+        // Add certificate to Keychain
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassCertificate,
             kSecValueRef as String: certificate,
@@ -337,11 +301,13 @@ class MqttModule: RCTEventEmitter {
         
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         guard addStatus == errSecSuccess || addStatus == errSecDuplicateItem else {
+            NSLog("    ❌ Failed to add certificate: \(addStatus)")
             throw NSError(domain: "MqttModule", code: Int(addStatus),
                         userInfo: [NSLocalizedDescriptionKey: "Failed to add certificate to Keychain: \(addStatus)"])
         }
+        NSLog("    ✓ Certificate added to Keychain")
         
-        // Query for identity
+        // Query for identity (cert + private key combination)
         let identityQuery: [String: Any] = [
             kSecClass as String: kSecClassIdentity,
             kSecAttrLabel as String: certLabel,
@@ -351,12 +317,14 @@ class MqttModule: RCTEventEmitter {
         var identityRef: CFTypeRef?
         let identityStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRef)
         
-        guard identityStatus == errSecSuccess, let identity = identityRef as? SecIdentity else {
+        guard identityStatus == errSecSuccess else {
+            NSLog("    ❌ Failed to create identity: \(identityStatus)")
             throw NSError(domain: "MqttModule", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Failed to create SecIdentity"])
+                        userInfo: [NSLocalizedDescriptionKey: "Failed to create SecIdentity: \(identityStatus)"])
         }
         
-        return identity
+        NSLog("    ✓ SecIdentity created successfully")
+        return (identityRef as! SecIdentity)
     }
     
     private func loadPrivateKeyFromKeychain(alias: String) throws -> SecKey? {
@@ -376,6 +344,7 @@ class MqttModule: RCTEventEmitter {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         
         guard status == errSecSuccess else {
+            NSLog("    ❌ Private key not found: \(status)")
             return nil
         }
         
@@ -410,5 +379,106 @@ class MqttModule: RCTEventEmitter {
         }
         
         return certificates
+    }
+}
+
+// MARK: - CocoaMQTT Delegate for Server Certificate Validation
+extension MqttModule: CocoaMQTTDelegate {
+    
+    func mqtt(_ mqtt: CocoaMQTT, didReceive trust: SecTrust, completionHandler: @escaping (Bool) -> Void) {
+        NSLog("🔐 Server certificate validation requested")
+        
+        // If no CA certificates configured, reject
+        guard !trustedCACertificates.isEmpty else {
+            NSLog("  ❌ No CA certificates configured - rejecting server")
+            completionHandler(false)
+            return
+        }
+        
+        // Set our CA certificates as anchors for validation
+        let status = SecTrustSetAnchorCertificates(trust, trustedCACertificates as CFArray)
+        guard status == errSecSuccess else {
+            NSLog("  ❌ Failed to set anchor certificates: \(status)")
+            completionHandler(false)
+            return
+        }
+        
+        // Enable only our CA certificates (don't use system roots)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+        
+        // Evaluate the trust
+        var error: CFError?
+        let isValid = SecTrustEvaluateWithError(trust, &error)
+        
+        if isValid {
+            NSLog("  ✅ Server certificate validated successfully")
+            completionHandler(true)
+        } else {
+            let errorDesc = error?.localizedDescription ?? "Unknown error"
+            NSLog("  ❌ Server certificate validation failed: \(errorDesc)")
+            completionHandler(false)
+        }
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didConnectAck ack: CocoaMQTTConnAck) {
+        if ack == .accept {
+            NSLog("╔════════════════════════════════════════════════════════════════")
+            NSLog("║ ✓✓✓ MQTT SUCCESSFULLY CONNECTED ✓✓✓")
+            NSLog("╠════════════════════════════════════════════════════════════════")
+            NSLog("║ Broker: \(brokerUrl)")
+            NSLog("║ Client ID: \(clientIdentifier)")
+            NSLog("║ Timestamp: \(Date())")
+            NSLog("╚════════════════════════════════════════════════════════════════")
+            
+            self.sendEvent(withName: "MqttConnected", body: "Connected")
+            connectSuccessCallback?(["Connected to \(brokerUrl)"])
+            connectSuccessCallback = nil
+            connectErrorCallback = nil
+        } else {
+            let error = "Connection rejected: \(ack)"
+            NSLog("❌ \(error)")
+            connectErrorCallback?([error])
+            connectSuccessCallback = nil
+            connectErrorCallback = nil
+        }
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didPublishMessage message: CocoaMQTTMessage, id: UInt16) {
+        NSLog("📤 Message delivered: \(message.topic)")
+        
+        self.sendEvent(withName: "MqttDeliveryComplete", body: [
+            "topic": message.topic,
+            "messageId": id
+        ])
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {}
+    
+    func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16) {
+        NSLog("📨 Message received on topic: \(message.topic)")
+        
+        self.sendEvent(withName: "MqttMessage", body: [
+            "topic": message.topic,
+            "message": message.string ?? "",
+            "qos": message.qos.rawValue
+        ])
+    }
+    
+    func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopics success: NSDictionary, failed: [String]) {}
+    func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopics topics: [String]) {}
+    func mqttDidPing(_ mqtt: CocoaMQTT) {}
+    func mqttDidReceivePong(_ mqtt: CocoaMQTT) {}
+    
+    func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {
+        let errorMsg = err?.localizedDescription ?? "Unknown error"
+        
+        NSLog("╔════════════════════════════════════════════════════════════════")
+        NSLog("║ ❌ MQTT Disconnected")
+        NSLog("╠════════════════════════════════════════════════════════════════")
+        NSLog("║ Error: \(errorMsg)")
+        NSLog("║ Timestamp: \(Date())")
+        NSLog("╚════════════════════════════════════════════════════════════════")
+        
+        self.sendEvent(withName: "MqttDisconnected", body: errorMsg)
     }
 }
