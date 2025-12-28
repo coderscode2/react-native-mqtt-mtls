@@ -44,6 +44,7 @@
     "index.ts",
     "index.d.ts",
     "react-native.config.js",
+    "react-native-mqtt-mtls.podspec",
     "README.md",
     "LICENSE"
   ]
