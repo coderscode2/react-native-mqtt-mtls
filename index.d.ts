@@ -43,11 +43,18 @@ declare module 'react-native-mqtt-mtls' {
   export const MqttProvider: React.FC<MqttProviderProps>;
   export function useMqtt(): MqttContextType;
 
+  /**
+   * Native MQTT Module interface
+   * Parameter order matches iOS/Android native implementations:
+   * broker, clientId, certificates, sniHostname, brokerIp, successCallback, errorCallback
+   */
   export interface MqttModuleType {
     connect(
       broker: string,
       clientId: string,
       certificates: MqttCertificates,
+      sniHostname: string | null,
+      brokerIp: string | null,
       successCallback: (message: string) => void,
       errorCallback: (error: string) => void
     ): void;
