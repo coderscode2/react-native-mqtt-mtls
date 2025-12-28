@@ -1,13 +1,17 @@
 import { NativeModules } from 'react-native';
 import type { MqttCertificates } from './types';
 
+/**
+ * Native module interface - parameter order must match iOS/Android native implementations
+ * Order: broker, clientId, certificates, sniHostname, brokerIp, successCallback, errorCallback
+ */
 interface MqttModuleType {
   connect(
     broker: string,
     clientId: string,
+    certificates: MqttCertificates,
     sniHostname: string | null,
     brokerIp: string | null,
-    certificates: MqttCertificates,
     successCallback: (message: string) => void,
     errorCallback: (error: string) => void
   ): void;
