@@ -39,6 +39,7 @@
   },
   "files": [
     "android/",
+    "ios/",
     "src/",
     "index.d.ts",
     "README.md",
