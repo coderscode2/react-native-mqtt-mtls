@@ -1,0 +1,70 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build
+lib/
+*.tgz
+
+# iOS
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace
+
+# Android
+*.apk
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.gradle
+*.hprof
+
+# BUCK
+buck-out/
+\.buckd/
+*.keystore
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+
+# Bundle artifact
+*.jsbundle
+
+# CocoaPods
+Pods/
+
+# Expo
+.expo/
+.expo-shared/
+
+# Misc
+.DS_Store
+*.pem
+!.gitkeep
+
+# TypeScript
+*.tsbuildinfo
