@@ -5,9 +5,9 @@ module.exports = {
         packageImportPath: 'import com.reactnativemqttmtls.MqttMtlsPackage;',
         packageInstance: 'new MqttMtlsPackage()',
       },
-      ios: {
-        project: './ios/MqttModule.xcodeproj',
-      },
+      // ios: {
+      //   project: './ios/MqttModule.xcodeproj',
+      // },
     },
   },
 };
